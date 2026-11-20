@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Send-to-Agent",
   "version": "1.0.0",
-  "description": "Highlight text, right-click, and send it to ChatGPT, Claude, a specific labeled agent tab, or your own API key.",
+  "description": "Highlight text and send it to ChatGPT, Claude, or your own API key in one keystroke, with your instructions added before it sends.",
   "minimum_chrome_version": "116",
   "permissions": [
     "storage",
