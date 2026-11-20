@@ -1,0 +1,11 @@
+# Build output (upload zips for the Chrome Web Store)
+dist/
+
+# OS / editor
+.DS_Store
+*.swp
+.vscode/
+.idea/
+
+# Local test harness output
+.harness/

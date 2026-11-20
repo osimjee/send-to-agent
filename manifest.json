@@ -1,0 +1,61 @@
+{
+  "manifest_version": 3,
+  "name": "Send-to-Agent",
+  "version": "1.0.0",
+  "description": "Highlight text, right-click, and send it to ChatGPT, Claude, a specific labeled agent tab, or your own API key.",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "storage",
+    "contextMenus",
+    "scripting",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://claude.ai/*",
+    "https://api.openai.com/*",
+    "https://api.anthropic.com/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Send-to-Agent",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "commands": {
+    "quick-send": {
+      "suggested_key": {
+        "default": "Alt+Shift+S",
+        "mac": "Alt+Shift+S"
+      },
+      "description": "Send highlighted text to your quick-send target"
+    }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "content.css"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
+}

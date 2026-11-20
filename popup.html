@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Send-to-Agent</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --surface: #f6f6f8;
+      --border: #e3e3e8;
+      --text: #1c1c21;
+      --muted: #6b6b76;
+      --accent: #5b5bd6;
+      --accent-text: #ffffff;
+      --danger: #c4344b;
+      --ok: #1f8a4c;
+      --radius: 10px;
+      color-scheme: light dark;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #17171b;
+        --surface: #212127;
+        --border: #33333b;
+        --text: #ececf1;
+        --muted: #9a9aa6;
+        --accent: #8585f0;
+        --accent-text: #0f0f14;
+        --danger: #f07a8c;
+        --ok: #5fd08f;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      width: 370px;
+      background: var(--bg);
+      color: var(--text);
+      font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 16px 10px;
+    }
+    header img { width: 24px; height: 24px; border-radius: 6px; }
+    header h1 { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: -0.01em; }
+    header span { margin-left: auto; color: var(--muted); font-size: 11px; }
+    main { padding: 0 16px 16px; display: grid; gap: 14px; }
+    section h2 {
+      margin: 0 0 8px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+    }
+    label.field { display: grid; gap: 4px; font-weight: 500; }
+    label.field small { font-weight: 400; color: var(--muted); }
+    input[type="text"], input[type="password"], input[type="url"], input[type="number"], select, textarea {
+      width: 100%;
+      padding: 7px 9px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--bg);
+      color: var(--text);
+      font: inherit;
+    }
+    textarea { resize: vertical; min-height: 64px; }
+    input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+    .segmented {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 3px;
+      gap: 3px;
+    }
+    .segmented input { position: absolute; opacity: 0; pointer-events: none; }
+    .segmented label {
+      text-align: center;
+      padding: 6px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      color: var(--muted);
+    }
+    .segmented input:checked + label { background: var(--accent); color: var(--accent-text); }
+    .segmented input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .row { display: flex; gap: 6px; align-items: center; }
+    .row > input { flex: 1; min-width: 0; }
+    .check { display: flex; gap: 8px; align-items: flex-start; font-weight: 500; }
+    .check small { display: block; color: var(--muted); font-weight: 400; }
+    .hint { color: var(--muted); font-size: 12px; margin: 0; }
+    .hint.ok { color: var(--ok); }
+    button {
+      font: inherit;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+    button:hover { border-color: var(--muted); }
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--accent-text);
+      font-weight: 600;
+      padding: 8px 14px;
+    }
+    button.link { border: 0; background: none; color: var(--danger); padding: 2px 4px; font-size: 12px; }
+    [hidden] { display: none !important; }
+
+    /* Agent tab list */
+    .tabs { display: grid; gap: 6px; }
+    .tab-row {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 8px;
+      align-items: center;
+      padding: 8px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .pill {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .tab-row .meta { min-width: 0; display: grid; gap: 3px; }
+    .tab-row .meta input { padding: 4px 7px; }
+    .tab-row .title {
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .empty { color: var(--muted); font-size: 12px; margin: 0; }
+
+    /* Quick send shortcut */
+    .shortcut-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+      border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+    }
+    .shortcut-row .text { flex: 1; min-width: 0; font-weight: 500; }
+    .shortcut-row .text small { display: block; color: var(--muted); font-weight: 400; font-size: 11px; }
+    kbd {
+      font: 600 16px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      letter-spacing: 0.08em;
+      padding: 6px 9px;
+      border-radius: 7px;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-bottom-width: 3px;
+      white-space: nowrap;
+    }
+    .shortcut-row.unset { background: color-mix(in srgb, var(--danger) 8%, var(--bg)); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
+
+    /* Health */
+    .section-head { display: flex; align-items: baseline; justify-content: space-between; }
+    button.link.muted { color: var(--muted); }
+    .health { display: grid; gap: 6px; }
+    .health-row {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 10px;
+      align-items: start;
+      padding: 8px 10px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .health-row strong { font-weight: 600; }
+    .health-row .detail { color: var(--muted); font-size: 12px; margin-top: 1px; }
+    .health-row code { font-size: 11px; word-break: break-all; }
+    .status {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 999px;
+      margin-top: 2px;
+      white-space: nowrap;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .status.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+    .status.degraded { color: #b7791f; border-color: color-mix(in srgb, #e8a10f 50%, transparent); background: color-mix(in srgb, #e8a10f 12%, transparent); }
+    .status.broken { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+    @media (prefers-color-scheme: dark) { .status.degraded { color: #f2c35b; } }
+
+    details summary { cursor: pointer; font-weight: 600; color: var(--muted); font-size: 12px; }
+    details[open] summary { margin-bottom: 10px; }
+
+    footer {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      position: sticky;
+      bottom: 0;
+      background: var(--bg);
+    }
+    #status { font-size: 12px; color: var(--muted); }
+    #status.ok { color: var(--ok); }
+    #status.error { color: var(--danger); }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="icons/icon48.png" alt="" />
+    <h1>Send-to-Agent</h1>
+    <span>Highlight → right-click</span>
+  </header>
+
+  <main>
+    <section aria-labelledby="quick-h">
+      <h2 id="quick-h">Quick send</h2>
+      <div class="card">
+        <div class="shortcut-row" id="shortcutRow"></div>
+        <label class="field">Send highlighted text to
+          <select id="quickTarget"></select>
+        </label>
+        <label class="check"><input type="checkbox" id="autoSubmit" />
+          <span>Send automatically<small>Off: the text waits in the ChatGPT or Claude prompt box so you can add instructions, then press Enter. On: it's sent right away.</small></span>
+        </label>
+        <label class="check"><input type="checkbox" id="compactMenu" />
+          <span>One-click right-click menu<small>Right-click shows a single “Send to …” item for your quick-send target.</small></span>
+        </label>
+      </div>
+    </section>
+
+    <section aria-labelledby="tabs-h">
+      <h2 id="tabs-h">Open agent tabs</h2>
+      <div class="tabs" id="agentTabs"></div>
+      <p class="empty" id="agentTabsEmpty" hidden>
+        No ChatGPT or Claude tabs are open. Open some and give them labels here — each one
+        shows up in the right-click menu so you can pick exactly where text goes.
+      </p>
+    </section>
+
+    <section aria-labelledby="health-h">
+      <div class="section-head">
+        <h2 id="health-h">Health</h2>
+        <button type="button" class="link muted" id="resetHealth" hidden>Reset</button>
+      </div>
+      <div class="health" id="health"></div>
+    </section>
+
+    <section aria-labelledby="route-h">
+      <h2 id="route-h">Default action</h2>
+      <div class="card">
+        <div class="segmented" role="radiogroup" aria-label="Routing method">
+          <input type="radio" name="routeMethod" id="route-url" value="url" />
+          <label for="route-url">Web chat (URL)</label>
+          <input type="radio" name="routeMethod" id="route-api" value="api" />
+          <label for="route-api">API sidebar</label>
+        </div>
+
+        <div id="urlSettings">
+          <label class="field">Open in
+            <select id="urlTarget">
+              <option value="chatgpt">ChatGPT (chatgpt.com)</option>
+              <option value="claude">Claude (claude.ai)</option>
+            </select>
+          </label>
+        </div>
+
+        <div id="apiSettings" class="card" style="padding:0;border:0;background:none">
+          <label class="field">Provider
+            <select id="apiProvider">
+              <option value="anthropic">Anthropic</option>
+              <option value="openai">OpenAI</option>
+              <option value="custom">Custom (OpenAI-compatible)</option>
+            </select>
+          </label>
+
+          <div data-provider="anthropic" class="card" style="padding:0;border:0;background:none">
+            <label class="field">Anthropic API key
+              <div class="row">
+                <input type="password" id="anthropicKey" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" />
+                <button type="button" class="reveal" data-for="anthropicKey" aria-label="Show key">Show</button>
+              </div>
+            </label>
+            <p class="hint" id="anthropicKeyHint"></p>
+            <label class="field">Model
+              <input type="text" id="anthropicModel" spellcheck="false" placeholder="claude-opus-5-5" />
+            </label>
+          </div>
+
+          <div data-provider="openai" class="card" style="padding:0;border:0;background:none">
+            <label class="field">OpenAI API key
+              <div class="row">
+                <input type="password" id="openaiKey" autocomplete="off" spellcheck="false" placeholder="sk-…" />
+                <button type="button" class="reveal" data-for="openaiKey" aria-label="Show key">Show</button>
+              </div>
+            </label>
+            <p class="hint" id="openaiKeyHint"></p>
+            <label class="field">Model
+              <input type="text" id="openaiModel" spellcheck="false" placeholder="gpt-5-mini" />
+            </label>
+          </div>
+
+          <div data-provider="custom" class="card" style="padding:0;border:0;background:none">
+            <label class="field">Base URL <small>Must serve <code>/chat/completions</code>, e.g. http://localhost:11434/v1</small>
+              <input type="url" id="customBaseUrl" spellcheck="false" placeholder="https://my-gateway.example.com/v1" />
+            </label>
+            <label class="field">API key <small>Optional</small>
+              <div class="row">
+                <input type="password" id="customKey" autocomplete="off" spellcheck="false" />
+                <button type="button" class="reveal" data-for="customKey" aria-label="Show key">Show</button>
+              </div>
+            </label>
+            <p class="hint" id="customKeyHint"></p>
+            <label class="field">Model
+              <input type="text" id="customModel" spellcheck="false" placeholder="llama3.1" />
+            </label>
+          </div>
+
+          <p class="hint">Keys are stored only on this device (<code>chrome.storage.local</code>), read only by the
+            background worker, and sent only to the provider you choose.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <details>
+        <summary>Prompt options</summary>
+        <div class="card">
+          <label class="field">Prompt prefix <small>Added before the highlighted text, e.g. “Explain this simply:”</small>
+            <input type="text" id="promptPrefix" />
+          </label>
+          <label class="field">System prompt <small>API sidebar only</small>
+            <textarea id="systemPrompt" rows="4"></textarea>
+          </label>
+          <label class="field">Max response tokens <small>API sidebar only</small>
+            <input type="number" id="maxTokens" min="256" max="64000" step="256" />
+          </label>
+          <label class="check"><input type="checkbox" id="includeSource" />
+            <span>Include page title &amp; URL<small>Adds the source page under your text.</small></span>
+          </label>
+        </div>
+      </details>
+    </section>
+  </main>
+
+  <footer>
+    <button type="button" class="primary" id="save">Save settings</button>
+    <span id="status" role="status" aria-live="polite"></span>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>
