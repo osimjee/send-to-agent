@@ -23,6 +23,8 @@ A small helper app the Chrome extension talks to through Chrome native messaging
    - First, check which apps accept a link that opens them with a prompt filled in (Cursor, Claude Desktop, ChatGPT desktop). Build the ones that work.
    - For apps without one, an experimental option: copy, bring the app forward and paste. This needs macOS Accessibility permission.
 
+**Pricing test:** sell the Mac helper for about $10 one-time, through Lemon Squeezy, Paddle or Gumroad, with an offline-checked license key so there's still no server. If sales are tiny, make it free too. The Chrome extension stays free either way.
+
 ## 3.x: Windows
 
 The same helper on Windows: native messaging registration through the registry, the MCP server, and push where the apps support it.
