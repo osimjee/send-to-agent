@@ -62,6 +62,10 @@ The popup's **Health** section shows each site's status:
 - **Degraded:** it worked, but only through a backup selector or by pressing Enter. The site may be changing.
 - **Broken:** the last send failed.
 
+When a ChatGPT or Claude tab loads (at most every 30 minutes per site), the extension also checks, without touching anything, that it can still find the prompt box. A site that only matches a backup selector shows **Degraded** before you ever send. **Test now** runs that check on your open tabs.
+
+If something is wrong, **Copy diagnostic report** copies versions, statuses and which selectors matched, plus a few element attributes near the prompt box, never your text. **Report a problem** opens a prefilled GitHub issue with the same report for you to review and submit.
+
 The toolbar icon shows an amber or red `!` when anything isn't OK. Labeled agent tabs show their label on the badge instead. Only selectors, timings and the extension version are stored, never your text.
 
 ## Settings

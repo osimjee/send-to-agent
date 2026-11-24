@@ -295,29 +295,50 @@ function code(text) {
   return c;
 }
 
+const PROBE_WORDS = {
+  'composer-not-found': "the prompt box couldn't be found",
+  'composer-fallback': 'the prompt box only matched a backup selector',
+  'send-fallback': 'the send button only matched a backup selector',
+};
+
 function healthDetail(entry) {
   const d = document.createElement('div');
   d.className = 'detail';
   if (!entry) {
-    d.textContent = 'Not used yet. Checked each time you send to an open tab.';
+    d.textContent = 'Not checked yet. Open a tab and click Test now, or send something to it.';
     return d;
   }
-  if (entry.status === 'broken') {
+  // Entries saved by 1.0 have only `status`, which was the send's status.
+  const sendStatus = entry.sendStatus || (entry.lastAttempt ? entry.status : null);
+  const probe = entry.probe;
+
+  if (sendStatus === 'broken') {
     const streak = entry.failStreak > 1 ? ` (${entry.failStreak} times in a row)` : '';
     d.append(
       `Failed ${ago(entry.lastFail)} while ${STAGE_WORDS[entry.lastFailStage] || 'sending'}${streak}. ` +
-        `Last worked: ${ago(entry.lastOk)}. The site may have changed. Update the selectors in background.js.`
+        `Last worked: ${ago(entry.lastOk)}. The site may have changed. Copy a diagnostic report and report it.`
     );
     return d;
   }
-  d.append(`Worked ${ago(entry.lastOk)}`);
-  if (entry.status === 'degraded') {
-    const why = (entry.fallbackUsed || []).map((p) => FALLBACK_WORDS[p]).filter(Boolean).join('; ');
-    d.append(`, but ${why || 'only through a backup'}. The site may be changing.`);
-  } else {
-    d.append('.');
+  if (sendStatus) {
+    d.append(`Last send worked ${ago(entry.lastOk)}`);
+    if (sendStatus === 'degraded') {
+      const why = (entry.fallbackUsed || []).map((p) => FALLBACK_WORDS[p]).filter(Boolean).join('; ');
+      d.append(`, but ${why || 'only through a backup'}`);
+    }
+    d.append('. ');
   }
-  if (entry.lastComposerMatch) d.append(' Prompt box: ', code(entry.lastComposerMatch));
+  if (probe?.at) {
+    if (probe.status === 'degraded') {
+      d.append(`Page check ${ago(probe.at)}: ${PROBE_WORDS[probe.reason] || 'something looked off'}. The site may be changing.`);
+    } else if (!sendStatus) {
+      d.append(`Page check ${ago(probe.at)}: prompt box found.`);
+    }
+  } else if (!sendStatus) {
+    d.append('Not checked yet.');
+  }
+  const match = sendStatus ? entry.lastComposerMatch : probe?.composerMatch;
+  if (match) d.append(' Prompt box: ', code(match));
   return d;
 }
 
@@ -351,6 +372,67 @@ $('resetHealth').addEventListener('click', async () => {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local' && HEALTH_KEY in changes) renderHealth();
 });
+
+function healthMsg(text) {
+  $('healthMsg').textContent = text;
+}
+
+/** Runs `fn` with the Health buttons disabled, so a slow check can't be started twice. */
+async function busy(label, fn) {
+  const buttons = ['testNow', 'copyReport', 'reportIssue'].map($);
+  buttons.forEach((b) => (b.disabled = true));
+  healthMsg(label);
+  try {
+    return await fn();
+  } finally {
+    buttons.forEach((b) => (b.disabled = false));
+  }
+}
+
+$('testNow').addEventListener('click', () =>
+  busy('Checking open ChatGPT and Claude tabs…', async () => {
+    const results = (await chrome.runtime.sendMessage({ type: 'sta:testNow' })) || [];
+    if (results.error) return healthMsg(`Couldn't run the check: ${results.error}`);
+    const names = Object.fromEntries(HEALTH_AGENTS);
+    const parts = results.map((r) => {
+      const name = names[r.agent] || r.agent;
+      if (r.status === 'no-tab') return `${name}: no open tab to check`;
+      if (r.reason === 'not-a-chat-page') return `${name}: open a chat (not settings or login) to check`;
+      return `${name}: ${r.status === 'ok' ? 'prompt box found' : PROBE_WORDS[r.reason] || r.reason}`;
+    });
+    healthMsg(`${parts.join('. ')}.`);
+  })
+);
+
+async function getDiagnostics() {
+  const res = await chrome.runtime.sendMessage({ type: 'sta:diagnostics', userAgent: navigator.userAgent });
+  if (!res || res.error) throw new Error(res?.error || 'no response');
+  return res;
+}
+
+$('copyReport').addEventListener('click', () =>
+  busy('Building the report…', async () => {
+    try {
+      const { report } = await getDiagnostics();
+      await navigator.clipboard.writeText(report);
+      healthMsg('Diagnostic report copied. It has versions and selectors only, no text from your chats or pages.');
+    } catch (e) {
+      healthMsg(`Couldn't build the report: ${e.message}`);
+    }
+  })
+);
+
+$('reportIssue').addEventListener('click', () =>
+  busy('Opening a GitHub issue…', async () => {
+    try {
+      const { issueUrl } = await getDiagnostics();
+      await chrome.tabs.create({ url: issueUrl });
+      healthMsg('');
+    } catch (e) {
+      healthMsg(`Couldn't open the issue: ${e.message}`);
+    }
+  })
+);
 
 // --------------------------------------------------------------------------
 // Wiring

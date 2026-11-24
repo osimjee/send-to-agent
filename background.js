@@ -20,6 +20,7 @@ const AGENTS = {
     newChatUrl: 'https://chatgpt.com/',
     queryUrl: (q) => `https://chatgpt.com/?q=${encodeURIComponent(q)}`,
     queryAutoSends: true, // ?q= sends on its own
+    chatPath: '^/($|c/|g/)', // home, a conversation, or a custom GPT
     patterns: ['https://chatgpt.com/*', 'https://chat.openai.com/*'],
     hosts: ['chatgpt.com', 'chat.openai.com'],
   },
@@ -28,6 +29,7 @@ const AGENTS = {
     newChatUrl: 'https://claude.ai/new',
     queryUrl: (q) => `https://claude.ai/new?q=${encodeURIComponent(q)}`,
     queryAutoSends: false, // ?q= only fills the prompt box
+    chatPath: '^/(new|chat/|project/)',
     patterns: ['https://claude.ai/*'],
     hosts: ['claude.ai'],
   },
@@ -66,6 +68,8 @@ const SELECTORS = {
 };
 
 const HEALTH_KEY = 'selectorHealth';
+const REPO_URL = 'https://github.com/osimjee/send-to-agent';
+const PROBE_EVERY_MS = 30 * 60 * 1000; // automatic check at most once per site per 30 min
 const SELECTOR_STAGES = ['composer', 'insert', 'send']; // failures that point at the site's markup
 
 const PROVIDERS = {
@@ -427,6 +431,9 @@ async function sendToExistingTab(tabId, prompt, s, sourceTab) {
 async function deliverToAgentTab(tabId, agentKey, prompt, autoSubmit) {
   const result = await injectIntoAgentTab(tabId, agentKey, prompt, autoSubmit);
   if (SELECTOR_STAGES.includes(result.stage) || result.ok) await recordHealth(agentKey, result);
+  if (!result.ok && SELECTOR_STAGES.includes(result.stage)) {
+    probeTab(tabId, agentKey, { waitMs: 0 }).catch(() => {}); // candidates for the diagnostic report
+  }
   if (!result.ok) {
     console.warn('[Send-to-Agent] delivery failed', agentKey, result);
     await showRecovery(tabId, agentKey, prompt, result);
@@ -611,21 +618,34 @@ async function recordHealth(agentKey, result) {
     ].filter(Boolean),
   };
   if (result.ok) {
-    entry.status = result.usedFallback ? 'degraded' : 'ok';
+    entry.sendStatus = result.usedFallback ? 'degraded' : 'ok';
     entry.lastOk = now;
     entry.failStreak = 0;
+    // A send that found the prompt box through its main selector settles an earlier probe warning.
+    const primaryComposer = SELECTORS[agentKey]?.composer.primary.includes(result.composerMatch);
+    if (primaryComposer && entry.probe && entry.probe.status !== 'ok') {
+      entry.probe = { ...entry.probe, status: 'ok', reason: 'settled-by-send' };
+    }
   } else {
-    entry.status = 'broken';
+    entry.sendStatus = 'broken';
     entry.lastFail = now;
     entry.lastFailStage = result.stage;
     entry.lastFailReason = result.reason;
     entry.failStreak = (prev.failStreak || 0) + 1;
   }
+  entry.status = combinedStatus(entry);
   health[agentKey] = entry;
   await chrome.storage.local.set({ [HEALTH_KEY]: health }); // storage.onChanged updates the badge
 }
 
 const STATUS_RANK = { ok: 0, degraded: 1, broken: 2 };
+
+/** Worse of the last send's result and the last probe's (entries from 1.0 only have `status`). */
+function combinedStatus(entry) {
+  const send = entry.sendStatus || (entry.probe ? null : entry.status) || 'ok';
+  const probe = entry.probe?.status || 'ok';
+  return STATUS_RANK[probe] > STATUS_RANK[send] ? probe : send;
+}
 
 /** Global badge: amber "!" if any agent is degraded, red "!" if any is broken. */
 async function updateHealthBadge() {
@@ -645,6 +665,249 @@ async function updateHealthBadge() {
   await chrome.action.setTitle({
     title: problems.length ? `Send-to-Agent: ${problems.join(', ')}. Open for details.` : 'Send-to-Agent',
   });
+}
+
+// ---------------------------------------------------------------------------
+// Probe: a read-only check of an agent page (Phase 2). Finds the prompt box and send button,
+// touches nothing, and lists a few candidate elements for the diagnostic report.
+// ---------------------------------------------------------------------------
+
+/**
+ * Injected. Must be self-contained. Never reads text, values or placeholders: only tag names,
+ * ids, roles, aria-labels, data-testids, types and class names.
+ */
+async function agentProbe(selectors, chatPath, waitMs) {
+  const started = performance.now();
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const visible = (el) => el && el.getClientRects().length > 0;
+  const find = (group) => {
+    for (const [tier, list] of [['primary', group.primary], ['fallback', group.fallback]]) {
+      for (const sel of list) {
+        let el;
+        try {
+          el = [...document.querySelectorAll(sel)].find(visible);
+        } catch {
+          continue;
+        }
+        if (el) return { el, selector: sel, fallback: tier === 'fallback' };
+      }
+    }
+    return null;
+  };
+  const clip = (v, n = 40) => (v == null ? undefined : String(v).slice(0, n));
+  // withLabel=false for buttons found far from the prompt box, whose labels can name chats.
+  const describe = (el, withLabel = true) => {
+    const d = { tag: el.tagName.toLowerCase() };
+    if (el.id) d.id = clip(el.id);
+    for (const [k, attr] of [
+      ['role', 'role'],
+      ['ariaLabel', 'aria-label'],
+      ['testid', 'data-testid'],
+      ['type', 'type'],
+      ['contenteditable', 'contenteditable'],
+    ]) {
+      if (k === 'ariaLabel' && !withLabel) continue;
+      const v = el.getAttribute(attr);
+      if (v) d[k] = clip(v);
+    }
+    const cls = [...el.classList].slice(0, 3).join('.');
+    if (cls) d.class = clip(cls, 60);
+    if (el.disabled || el.getAttribute('aria-disabled') === 'true') d.disabled = true;
+    return d;
+  };
+
+  const chatPage = new RegExp(chatPath).test(location.pathname);
+  let composer = find(selectors.composer);
+  for (let waited = 0; !composer && chatPage && waited < waitMs; waited += 250) {
+    await sleep(250);
+    composer = find(selectors.composer);
+  }
+  const send = find(selectors.send);
+
+  // Candidates: editable elements anywhere, buttons near the prompt box (or in forms / the lower
+  // part of the window when there is no prompt box), so a maintainer can write a new selector.
+  const editable = [...document.querySelectorAll('textarea, [contenteditable="true"], [role="textbox"]')].filter(visible);
+  const scope = composer?.el.closest('form') || composer?.el.parentElement?.parentElement?.parentElement || null;
+  let buttons = scope ? [...scope.querySelectorAll('button')] : [...document.querySelectorAll('form button')];
+  let nearComposer = true;
+  if (!buttons.length) {
+    nearComposer = false;
+    buttons = [...document.querySelectorAll('button')].filter(
+      (b) => b.getBoundingClientRect().top > window.innerHeight * 0.6
+    );
+  }
+  const candidates = [
+    ...editable.slice(0, 4).map((el) => describe(el)),
+    ...buttons.filter(visible).slice(0, 10).map((el) => describe(el, nearComposer)),
+  ];
+
+  return {
+    chatPage,
+    host: location.hostname,
+    composerMatch: composer?.selector || null,
+    composerFallback: !!composer?.fallback,
+    sendMatch: send?.selector || null,
+    sendFallback: !!send?.fallback,
+    candidates,
+    elapsedMs: Math.round(performance.now() - started),
+  };
+}
+
+/** Runs the probe in one tab and records it. Returns the probe entry, or null if it couldn't run. */
+async function probeTab(tabId, agentKey, { waitMs = 8000 } = {}) {
+  let res;
+  try {
+    const [out] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: agentProbe,
+      args: [SELECTORS[agentKey], AGENTS[agentKey].chatPath, waitMs],
+    });
+    res = out?.result;
+  } catch {
+    return null; // tab closed, discarded, or still on an error page
+  }
+  if (!res) return null;
+  return recordProbe(agentKey, res);
+}
+
+async function recordProbe(agentKey, res) {
+  let status = 'ok';
+  let reason = 'ok';
+  if (!res.chatPage) reason = 'not-a-chat-page';
+  else if (!res.composerMatch) [status, reason] = ['degraded', 'composer-not-found'];
+  else if (res.composerFallback) [status, reason] = ['degraded', 'composer-fallback'];
+  else if (res.sendMatch && res.sendFallback) [status, reason] = ['degraded', 'send-fallback'];
+  // No send button is normal (it often appears only after typing): not a problem.
+
+  const health = await getHealth();
+  const prev = health[agentKey] || {};
+  const probe = {
+    at: Date.now(),
+    status,
+    reason,
+    host: res.host,
+    composerMatch: res.composerMatch,
+    sendMatch: res.sendMatch,
+    candidates: res.candidates,
+  };
+  const entry = { ...prev, extVersion: chrome.runtime.getManifest().version };
+  if (!entry.sendStatus && prev.status && !prev.probe) entry.sendStatus = prev.status; // record from 1.0
+  // A settings or login page says nothing about the prompt box: keep the last real verdict.
+  if (res.chatPage || !prev.probe) entry.probe = probe;
+  entry.status = combinedStatus(entry);
+  health[agentKey] = entry;
+  await chrome.storage.local.set({ [HEALTH_KEY]: health });
+  return { agent: agentKey, ...probe };
+}
+
+/** Automatic check when an agent tab finishes loading, at most once per site per 30 minutes. */
+async function maybeProbeOnLoad(tabId, agentKey) {
+  const { probeAt = {} } = await chrome.storage.session.get('probeAt');
+  if (Date.now() - (probeAt[agentKey] || 0) < PROBE_EVERY_MS) return;
+  probeAt[agentKey] = Date.now();
+  await chrome.storage.session.set({ probeAt });
+  const result = await probeTab(tabId, agentKey);
+  if (result?.reason === 'not-a-chat-page') {
+    delete probeAt[agentKey]; // try again on the next chat page instead of waiting 30 min
+    await chrome.storage.session.set({ probeAt });
+  }
+}
+
+/** "Test now": probes one loaded tab per site. Sites with no open tab come back as 'no-tab'. */
+async function testNow() {
+  const tabs = await chrome.tabs.query({ url: AGENT_PATTERNS });
+  const results = [];
+  for (const agentKey of Object.keys(AGENTS)) {
+    const candidates = tabs
+      .filter((t) => agentOf(t.url) === agentKey && !t.discarded && t.status === 'complete')
+      .sort((a, b) => Number(b.active) - Number(a.active));
+    let probed = null;
+    for (const t of candidates) {
+      probed = await probeTab(t.id, agentKey, { waitMs: 3000 });
+      if (probed && probed.reason !== 'not-a-chat-page') break;
+    }
+    results.push(probed || { agent: agentKey, status: 'no-tab' });
+  }
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// Diagnostic report: versions, statuses and selector matches. Never any user or page text.
+// ---------------------------------------------------------------------------
+
+function describeCandidate(c) {
+  let s = c.tag;
+  if (c.id) s += `#${c.id}`;
+  if (c.class) s += `.${c.class}`;
+  for (const [k, label] of [
+    ['role', 'role'],
+    ['testid', 'data-testid'],
+    ['ariaLabel', 'aria-label'],
+    ['type', 'type'],
+    ['contenteditable', 'contenteditable'],
+  ]) {
+    if (c[k]) s += ` [${label}="${String(c[k]).replace(/["`]/g, "'")}"]`;
+  }
+  if (c.disabled) s += ' (disabled)';
+  return s;
+}
+
+async function diagnosticReport({ userAgent = '' } = {}) {
+  await testNow();
+  const [health, platform] = await Promise.all([getHealth(), chrome.runtime.getPlatformInfo().catch(() => ({}))]);
+  const chromeVersion = (userAgent.match(/Chrome\/([\d.]+)/) || [])[1] || 'unknown';
+  const iso = (t) => (t ? new Date(t).toISOString().replace(/\.\d+Z$/, 'Z') : 'never');
+  const lines = [
+    '### Send-to-Agent diagnostic report',
+    '',
+    `- Extension: ${chrome.runtime.getManifest().version}`,
+    `- Chrome: ${chromeVersion}`,
+    `- OS: ${platform.os || 'unknown'} (${platform.arch || '?'})`,
+    `- Generated: ${iso(Date.now())}`,
+  ];
+  for (const [key, agent] of Object.entries(AGENTS)) {
+    const e = health[key];
+    lines.push('', `#### ${agent.name}`, '');
+    if (!e) {
+      lines.push('- No data: never sent to, and no tab was open to check.');
+      continue;
+    }
+    lines.push(`- Status: ${e.status || 'unknown'} (last send: ${e.sendStatus || 'none'}, page check: ${e.probe?.status || 'none'})`);
+    if (e.lastAttempt) {
+      lines.push(`- Last send: ${iso(e.lastAttempt)}, ${e.lastElapsedMs ?? '?'} ms, submitted by: ${e.lastSubmitMethod || 'not sent'}`);
+      lines.push(`- Last worked: ${iso(e.lastOk)}`);
+    }
+    if (e.lastFail) {
+      lines.push(`- Last failure: ${iso(e.lastFail)} at stage \`${e.lastFailStage}\` (${e.lastFailReason}), ${e.failStreak || 0} in a row`);
+    }
+    if (e.lastComposerMatch || e.lastSendMatch) {
+      lines.push(`- Last send matched: prompt box \`${e.lastComposerMatch || 'none'}\`, send button \`${e.lastSendMatch || 'none'}\``);
+    }
+    if (e.fallbackUsed?.length) lines.push(`- Backups used: ${e.fallbackUsed.join(', ')}`);
+    const p = e.probe;
+    if (p?.at) {
+      lines.push(
+        `- Page check: ${iso(p.at)} on ${p.host || agent.hosts[0]}: ${p.reason}, ` +
+          `prompt box \`${p.composerMatch || 'none'}\`, send button \`${p.sendMatch || 'none (normal before typing)'}\``
+      );
+      if (p.candidates?.length) {
+        lines.push('- Candidate elements:');
+        for (const c of p.candidates.slice(0, 14)) lines.push(`  - \`${describeCandidate(c)}\``);
+      }
+    }
+  }
+  lines.push('', '_No selected text, page text or chat titles are included in this report._');
+  return lines.join('\n');
+}
+
+function reportIssueUrl(report, health) {
+  const bad = Object.entries(health)
+    .filter(([, e]) => e?.status && e.status !== 'ok')
+    .map(([k, e]) => `${AGENTS[k]?.name || k} ${e.status}`);
+  const title = `Health: ${bad.length ? bad.join(', ') : 'problem report'}`;
+  // GitHub rejects very long URLs, so the report is trimmed well under the limit.
+  const body = `What happened (optional):\n\n\n${report.slice(0, 5500)}`;
+  return `${REPO_URL}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
 }
 
 const RECOVERY_MESSAGES = {
@@ -1265,9 +1528,11 @@ chrome.tabs.onUpdated.addListener(async (tabId, info, tab) => {
   if (!relevant) return;
   if (info.url || info.title !== undefined || info.status === 'complete') scheduleMenuRebuild();
   if (info.status === 'complete') {
+    const agentKey = agentOf(tab.url);
+    if (agentKey) maybeProbeOnLoad(tabId, agentKey).catch(() => {});
     const labels = await getLabels();
     if (labels[tabId]) {
-      if (agentOf(tab.url)) applyLabelToTab(tabId, labels[tabId]);
+      if (agentKey) applyLabelToTab(tabId, labels[tabId]);
       else setLabel(tabId, ''); // navigated away from the agent
     }
   }
@@ -1301,6 +1566,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return false;
     case 'sta:listAgentTabs':
       listAgentTabs().then(sendResponse, () => sendResponse([]));
+      return true;
+    case 'sta:testNow':
+      testNow().then(sendResponse, (e) => sendResponse({ error: e.message }));
+      return true;
+    case 'sta:diagnostics':
+      (async () => {
+        const report = await diagnosticReport({ userAgent: String(msg.userAgent || '') });
+        return { report, issueUrl: reportIssueUrl(report, await getHealth()) };
+      })().then(sendResponse, (e) => sendResponse({ error: e.message }));
       return true;
     case 'sta:quickInfo':
       quickInfo().then(sendResponse, () => sendResponse(null));

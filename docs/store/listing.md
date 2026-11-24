@@ -4,7 +4,7 @@ Copy these into the Chrome Web Store Developer Dashboard. Fields appear in the o
 
 ## Package
 
-- **Upload:** `dist/send-to-agent-1.0.0.zip` (build it with `scripts/package.sh`)
+- **Upload:** `dist/send-to-agent-<version>.zip` (build it with `scripts/package.sh`)
 - **Visibility for the first release:** consider **Unlisted** for a week. It works by link only, so you can share it with a few people before it shows up in search.
 
 ## Store listing tab
@@ -85,7 +85,7 @@ Send text the user highlights on a web page to an AI assistant the user chooses 
 | Permission | Justification |
 |---|---|
 | `activeTab` | Reads the text the user highlighted, and shows the answer sidebar or a notice on that page. Granted only when the user clicks a menu item or presses the extension's shortcut. |
-| `scripting` | Runs the small functions that read the user's selection, show the sidebar, the destination picker and notices, and type the text into a ChatGPT or Claude prompt box. Only on the active tab after a user action, or on the ChatGPT/Claude tab the user sends to. |
+| `scripting` | Runs the small functions that read the user's selection, show the sidebar, the destination picker and notices, and type the text into a ChatGPT or Claude prompt box. Only on the active tab after a user action, or on the ChatGPT/Claude tab the user sends to. On ChatGPT and Claude tabs it also runs a read-only check that the prompt box can still be found, so the user is warned before a send fails. |
 | `contextMenus` | Adds the "Send to Agent" items to the right-click menu when text is selected, and a "label this tab" item on ChatGPT and Claude pages. |
 | `storage` | Saves the user's settings, API keys, tab labels and a local record of whether sends worked. Everything stays on the device. |
 | Host permission: `chatgpt.com`, `chat.openai.com`, `claude.ai` | Types the user's text into the prompt box of the ChatGPT or Claude tab the user chose, and keeps the user's label in that tab's title. |

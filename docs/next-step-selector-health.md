@@ -1,6 +1,6 @@
 # Next step: detecting when ChatGPT or Claude breaks our selectors
 
-**Status:** Phase 1 is built. Phases 2 and 3 are planned, not started.
+**Status:** Phases 1 and 2 are built (Phase 2 in version 1.1.0). Phase 3 is planned, not started.
 
 Phase 1 differs from the original plan in one way: a single failed send marks the agent **broken** right away, not after 2 failures in a row. Each failure means the user lost a send, so the warning should come immediately. The popup also shows the failure count, and the next successful send clears the status.
 
@@ -34,7 +34,9 @@ Sending text into an open ChatGPT or Claude tab depends on CSS selectors for the
    - Store only selectors, timings and versions, never the user's text or the page content.
 5. **Warn on the toolbar.** Set the action badge to `!` (amber when degraded, red when broken) on every tab while any agent is degraded or broken. Add a **Health** row to the popup with each agent's status, when it last worked, and the failing stage.
 
-## Phase 2: catch breakage before the user sends anything
+## Phase 2: catch breakage before the user sends anything (built)
+
+As built: the page check can only mark a site **degraded** (amber), never **broken**. A slow page, a login wall or a challenge page shouldn't raise a red alarm; only a failed send does. A send that finds the prompt box through its primary selector clears a page-check warning. Buttons found away from the prompt box are recorded without their `aria-label`, since those can name chats.
 
 6. **Read-only probe.** A small `probeAgentPage()` function finds the prompt box and send button, touches nothing, and returns which selectors matched.
    - Run it when an agent tab finishes loading (we already listen for `tabs.onUpdated` with `status: 'complete'`). Debounce it to at most once per agent every 30 minutes.

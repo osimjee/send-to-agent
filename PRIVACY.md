@@ -2,6 +2,7 @@
 
 **Effective date:** November 19, 2026
 **Applies to:** the Send-to-Agent browser extension, version 1.0.0 and later
+**Last updated:** November 23, 2026 (version 1.1.0: page checks and diagnostic reports)
 
 Send-to-Agent ("the extension", "we") lets you send text you highlight on a web page to an AI assistant of your choice: ChatGPT or Claude in a browser tab, or an AI provider's API using your own API key. This policy explains what the extension handles, where it goes, and what stays on your device.
 
@@ -17,7 +18,8 @@ Send-to-Agent ("the extension", "we") lets you send text you highlight on a web 
 | **API keys** you enter (OpenAI, Anthropic, or a custom endpoint) | When you save them in the extension's settings | Stored on your device. Sent only to that provider, to authenticate your requests |
 | **Settings** (default action, models, prompt options, quick-send target, menu options) | When you change them | Stored on your device only |
 | **Tab labels** you give your ChatGPT or Claude tabs | When you set them | Stored in your browser session only, cleared when the browser restarts |
-| **Delivery health records** | After each send into a ChatGPT or Claude tab | Stored on your device only. Contains which page elements were found, timings, success or failure, and the extension version. **Never** your text or page content |
+| **Delivery health records** | After each send into a ChatGPT or Claude tab, and when a ChatGPT or Claude tab loads (at most every 30 minutes per site) | Stored on your device only. Contains which page elements were found, timings, success or failure, the extension version, and the technical attributes (tag name, id, role, data-testid, class names, and the label of buttons next to the prompt box) of a few elements around the prompt box. **Never** your text, your chat titles or page content |
+| **Diagnostic report** | Only when you click **Copy diagnostic report** or **Report a problem** | Built from the health records plus your extension, Chrome and operating-system versions. Copied to your clipboard, or put into a GitHub issue form that you review and submit yourself. The extension never sends it anywhere on its own |
 
 The extension does **not** collect or use:
 
@@ -26,7 +28,7 @@ The extension does **not** collect or use:
 - analytics, usage statistics, crash reports, advertising identifiers or cookies of its own
 - passwords or financial information
 
-The extension reads the page only when you take an action (a menu click or the shortcut). It does not run in the background on the sites you visit.
+The extension reads a page you're on only when you take an action (a menu click or the shortcut). On chatgpt.com and claude.ai, it also checks once in a while that it can still find the prompt box, without reading anything you've written there. It doesn't run on any other site you visit.
 
 ## 2. Where your text goes
 

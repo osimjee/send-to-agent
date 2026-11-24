@@ -5,7 +5,7 @@ Order: **browser first, then Mac, then Windows.**
 ## 1.x: Chrome extension (now)
 
 - **1.0:** quick send, labeled tabs, API sidebar, selector health. Publish to the Chrome Web Store.
-- **1.1:** selector health Phase 2 ([plan](next-step-selector-health.md)):
+- **1.1 (built, ready to upload after 1.0 is approved):** selector health Phase 2 ([plan](next-step-selector-health.md)):
   - a read-only check when an agent tab loads
   - a **Test now** button
   - **Copy diagnostic report**

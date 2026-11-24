@@ -199,6 +199,10 @@
       border-radius: 8px;
     }
     .health-row strong { font-weight: 600; }
+    .health-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+    .health-actions button:disabled { opacity: .6; cursor: default; }
+    #healthMsg { margin-top: 6px; }
+    #healthMsg:empty { display: none; }
     .health-row .detail { color: var(--muted); font-size: 12px; margin-top: 1px; }
     .health-row code { font-size: 11px; word-break: break-all; }
     .status {
@@ -274,6 +278,12 @@
         <button type="button" class="link muted" id="resetHealth" hidden>Reset</button>
       </div>
       <div class="health" id="health"></div>
+      <div class="health-actions">
+        <button type="button" id="testNow">Test now</button>
+        <button type="button" id="copyReport">Copy diagnostic report</button>
+        <button type="button" class="link muted" id="reportIssue">Report a problem</button>
+      </div>
+      <p class="hint" id="healthMsg" role="status" aria-live="polite"></p>
     </section>
 
     <section aria-labelledby="route-h">
